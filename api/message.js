@@ -1,25 +1,25 @@
-// GET /api/message?id=<id> -> ekta mail er full body (Authorization: Bearer <token> header lagbe)
-const BASE = 'https://api.mail.tm';
+// GET /api/message?id=<mail_id>&sid=<sid> -> ekta mail er full body (Guerrilla Mail fetch_email)
+const GM = 'https://api.guerrillamail.com/ajax.php';
 
 module.exports = async (req, res) => {
   const id = req.query && req.query.id;
-  if (!id) return res.status(400).json({ error: 'id lagbe' });
+  const sid = req.query && req.query.sid;
+  if (!id || !sid) return res.status(400).json({ error: 'id ar sid lagbe' });
   try {
-    const r = await fetch(BASE + '/messages/' + encodeURIComponent(id), {
-      headers: {
-        Accept: 'application/json',
-        Authorization: req.headers.authorization || '',
-        'User-Agent': 'BlackTempMail/1.0 (+https://github.com/mr-rean-x/black-tempmail)'
-      }
+    const r = await fetch(GM + '?f=fetch_email&email_id=' + encodeURIComponent(id) + '&sid_token=' + encodeURIComponent(sid), {
+      headers: { 'User-Agent': 'BlackTempMail/1.0' }
     });
     const text = await r.text();
-    if (!r.ok) return res.status(r.status).json({ error: 'mail.tm error ' + r.status, detail: text.slice(0, 300) });
-    try {
-      res.status(200).json(JSON.parse(text));
-    } catch (e) {
-      res.status(502).json({ error: 'mail.tm bad json', detail: text.slice(0, 300) });
-    }
+    if (!r.ok) return res.status(r.status).json({ error: 'guerrillamail error ' + r.status, detail: text.slice(0, 300) });
+    let d;
+    try { d = JSON.parse(text); } catch (e) { return res.status(502).json({ error: 'guerrillamail bad json', detail: text.slice(0, 300) }); }
+    res.status(200).json({
+      subject: d.mail_subject || '(no subject)',
+      from: d.mail_from || '',
+      body: d.mail_body || '',
+      date: d.mail_date || ''
+    });
   } catch (e) {
-    res.status(500).json({ error: 'mail.tm e connect kora jay nai', detail: String((e && e.message) || e) });
+    res.status(500).json({ error: 'guerrillamail e connect kora jay nai', detail: String((e && e.message) || e) });
   }
 };

@@ -37,7 +37,7 @@
       <button onclick="copyAddress()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold py-2 rounded-xl">📋 Copy Address</button>
       <button onclick="loadInbox(true)" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold py-2 rounded-xl">🔄 Refresh Inbox</button>
     </div>
-    <p id="status" class="text-xs text-gray-500 mt-2">Inbox auto-refreshes every 10 seconds.</p>
+    <p id="status" class="text-xs text-gray-500 mt-2">Inbox auto-refreshes every 15 seconds.</p>
   </div>
 
   <!-- OTP banner -->
@@ -60,13 +60,13 @@
   <!-- Saved addresses -->
   <div class="mt-6">
     <h2 class="font-bold text-lg">My Addresses</h2>
-    <p class="text-xs text-gray-500">Old addresses stay saved on this device — open one any time later to check its OTP.</p>
+    <p class="text-xs text-gray-500">Old addresses stay saved on this device — open one any time within ~1 hour to check its OTP.</p>
     <div id="savedList" class="mt-2 space-y-2"></div>
   </div>
 
   <footer class="text-center mt-8 mb-2">
     <p class="text-gray-500 text-sm"><b><i>develop by Black knowledge</i></b></p>
-    <p class="text-gray-600 text-xs mt-1">Powered by mail.tm API via Vercel • Mails auto-delete after ~24h • Never use temp mail for important accounts</p>
+    <p class="text-gray-600 text-xs mt-1">Powered by Guerrilla Mail API via Vercel • Addresses last ~1 hour • Never use temp mail for important accounts</p>
   </footer>
 </div>
 
@@ -88,7 +88,7 @@
 
 <script>
 const LS_KEY = 'blacktempmail_accounts';
-let current = null;      // { address, password, token }
+let current = null;      // { address, sid }
 let pollTimer = null;
 let lastMsgIds = new Set();
 
@@ -99,7 +99,7 @@ function esc(s) {
 function stripHtml(html) {
   const d = document.createElement('div');
   d.innerHTML = html || '';
-  return d.textContent || d.innerText || '';
+  return (d.textContent || d.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
 }
 function extractOTPs(text) {
   if (!text) return [];
@@ -125,7 +125,7 @@ function getSaved() {
 }
 function saveAccount(acc) {
   const list = getSaved().filter(a => a.address !== acc.address);
-  list.unshift({ address: acc.address, password: acc.password, created: Date.now() });
+  list.unshift({ address: acc.address, sid: acc.sid, created: Date.now() });
   localStorage.setItem(LS_KEY, JSON.stringify(list.slice(0, 20)));
   renderSaved();
 }
@@ -150,80 +150,49 @@ function renderSaved() {
   });
 }
 
-// ---- mail.tm flow (through Vercel API) ----
-async function login(address, password) {
-  const r = await fetch('/api/token', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ address, password })
-  });
-  const d = await r.json();
-  if (!r.ok || !d.token) throw new Error(d.message || 'login failed');
-  current = { address, password, token: d.token };
-  $('addressBox').textContent = address;
-  return current;
-}
-
+// ---- Guerrilla Mail flow (through Vercel API) ----
 async function generateAddress() {
   const custom = $('customName').value.trim().replace(/[^a-zA-Z0-9._-]/g, '').toLowerCase();
   setStatus('Creating your address...');
   $('addressBox').textContent = 'Generating...';
   try {
-    const doms = await (await fetch('/api/domains')).json();
-    const domList = Array.isArray(doms) ? doms : (doms['hydra:member'] || []);
-    const active = domList.find(d => d.isActive);
-    if (!active) throw new Error('no domain available');
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const name = custom || ('user' + Math.floor(Math.random() * 1000000000));
-      const address = name + '@' + active.domain;
-      const password = 'btm' + Math.random().toString(36).slice(2, 10);
-      const r = await fetch('/api/accounts', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, password })
-      });
-      if (r.ok) {
-        saveAccount({ address, password });
-        await login(address, password);
-        $('customName').value = '';
-        lastMsgIds = new Set();
-        setStatus('Address ready — inbox auto-refreshes every 10 seconds.');
-        loadInbox(true);
-        startPolling();
-        return;
-      }
-      if (!custom) continue; // name taken, retry with a new random one
-      throw new Error('that name is taken — try another');
-    }
-    throw new Error('could not create address, try again');
+    const r = await fetch('/api/accounts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: custom || undefined })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.address || !d.sid) throw new Error((d && (d.detail || d.error)) || 'could not create address');
+    current = { address: d.address, sid: d.sid };
+    saveAccount(current);
+    $('addressBox').textContent = d.address;
+    $('customName').value = '';
+    lastMsgIds = new Set();
+    setStatus('Address ready — inbox auto-refreshes every 15 seconds.');
+    loadInbox(true);
+    startPolling();
   } catch (e) {
     setStatus('Error: ' + e.message);
     $('addressBox').textContent = 'Failed — tap New Mail again.';
   }
 }
 
-async function openSaved(a) {
-  try {
-    setStatus('Opening ' + a.address + '...');
-    await login(a.address, a.password);
-    lastMsgIds = new Set();
-    setStatus('Opened saved address — inbox auto-refreshes every 10 seconds.');
-    loadInbox(true);
-    startPolling();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  } catch (e) {
-    setStatus('Could not open this address (it may have expired). Make a new one.');
-  }
+function openSaved(a) {
+  current = { address: a.address, sid: a.sid };
+  $('addressBox').textContent = a.address;
+  lastMsgIds = new Set();
+  setStatus('Opened saved address — inbox auto-refreshes every 15 seconds.');
+  loadInbox(true);
+  startPolling();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 async function loadInbox(manual) {
   if (!current) return;
   try {
-    let r = await fetch('/api/messages', { headers: { Authorization: 'Bearer ' + current.token } });
-    if (r.status === 401) { // token expired (~30 min) -> fresh token, same account
-      await login(current.address, current.password);
-      r = await fetch('/api/messages', { headers: { Authorization: 'Bearer ' + current.token } });
-    }
+    const r = await fetch('/api/messages?sid=' + encodeURIComponent(current.sid));
     const d = await r.json();
-    const msgs = Array.isArray(d) ? d : (d['hydra:member'] || []);
+    if (!r.ok) throw new Error((d && (d.detail || d.error)) || 'inbox load failed');
+    const msgs = d.messages || [];
     $('msgCount').textContent = msgs.length ? '(' + msgs.length + ')' : '';
     $('inboxState').textContent = 'updated ' + new Date().toLocaleTimeString();
     if (!msgs.length) {
@@ -231,7 +200,7 @@ async function loadInbox(manual) {
       $('otpBanner').classList.add('hidden');
       return;
     }
-    // OTP banner from latest message
+    // OTP banner from message subjects + previews
     const allText = msgs.map(m => (m.subject || '') + ' ' + (m.intro || '')).join(' ');
     const otps = extractOTPs(allText);
     if (otps.length) {
@@ -250,34 +219,31 @@ async function loadInbox(manual) {
     msgs.forEach(m => {
       const row = document.createElement('button');
       row.className = 'w-full text-left bg-zinc-900 border border-zinc-800 hover:border-green-600 rounded-xl px-3 py-3';
-      const isNew = !lastMsgIds.has(m.id);
+      const isNew = !lastMsgIds.has(String(m.id));
       row.innerHTML =
         '<div class="flex justify-between gap-2"><span class="font-semibold text-sm truncate">' + esc(m.subject || '(no subject)') + '</span>' +
         (isNew ? '<span class="text-[10px] bg-green-600 text-white px-2 py-0.5 rounded-full shrink-0">NEW</span>' : '') + '</div>' +
-        '<div class="text-xs text-gray-400 truncate mt-0.5">' + esc(m.from && m.from.address ? m.from.address : '') + '</div>' +
+        '<div class="text-xs text-gray-400 truncate mt-0.5">' + esc(m.from || '') + '</div>' +
         '<div class="text-xs text-gray-500 truncate">' + esc(m.intro || '') + '</div>';
       row.onclick = () => openMessage(m.id);
       $('inbox').appendChild(row);
     });
-    lastMsgIds = new Set(msgs.map(m => m.id));
+    lastMsgIds = new Set(msgs.map(m => String(m.id)));
   } catch (e) {
-    if (manual) setStatus('Inbox load failed — check connection and refresh.');
+    if (manual) setStatus('Inbox load failed: ' + e.message);
   }
 }
 
 async function openMessage(id) {
   try {
-    let r = await fetch('/api/message?id=' + encodeURIComponent(id), { headers: { Authorization: 'Bearer ' + current.token } });
-    if (r.status === 401) {
-      await login(current.address, current.password);
-      r = await fetch('/api/message?id=' + encodeURIComponent(id), { headers: { Authorization: 'Bearer ' + current.token } });
-    }
+    const r = await fetch('/api/message?id=' + encodeURIComponent(id) + '&sid=' + encodeURIComponent(current.sid));
     const m = await r.json();
-    const body = (m.text && m.text.trim()) ? m.text : stripHtml(m.html || '');
+    if (!r.ok) throw new Error((m && (m.detail || m.error)) || 'could not open message');
+    const body = stripHtml(m.body || '');
     const otps = extractOTPs((m.subject || '') + ' ' + body);
     $('mSubject').textContent = m.subject || '(no subject)';
-    $('mFrom').textContent = 'From: ' + (m.from ? (m.from.name ? m.from.name + ' <' + m.from.address + '>' : m.from.address) : '');
-    $('mDate').textContent = m.createdAt ? new Date(m.createdAt).toLocaleString() : '';
+    $('mFrom').textContent = 'From: ' + (m.from || '');
+    $('mDate').textContent = m.date || '';
     $('mBody').textContent = body || '(empty message)';
     $('mOtp').innerHTML = '';
     otps.forEach(code => {
@@ -289,17 +255,17 @@ async function openMessage(id) {
     });
     $('modal').classList.remove('hidden');
   } catch (e) {
-    setStatus('Could not open message.');
+    setStatus('Could not open message: ' + e.message);
   }
 }
 function closeModal() { $('modal').classList.add('hidden'); }
 
 function copyAddress() {
-  if (current) copyText(current.address, null), setStatus('Address copied ✓');
+  if (current) { copyText(current.address); setStatus('Address copied ✓'); }
 }
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(() => loadInbox(false), 10000);
+  pollTimer = setInterval(() => loadInbox(false), 15000);
 }
 
 // start: open last saved address, else make a fresh one

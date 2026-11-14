@@ -2,10 +2,19 @@
 
 Free temporary email generator — nijer temp mail, nijer Vercel.
 
-- **Website + API, dutai Vercel-e:** frontend `index.html`, backend `api/*.js` (Vercel Serverless Functions) — API gula mail.tm er free API ke proxy kore.
+- **Website + API, dutai Vercel-e:** frontend `index.html`, backend `api/*.js` (Vercel Serverless Functions) — API gula Guerrilla Mail er free API ke proxy kore.
 - **OTP auto-detect:** mail aslei 4–8 digit code ber kore banner-e dekhay, tap korlei copy.
-- **Old address, pore OTP:** prottek address browser-er localStorage-e save thake. "My Addresses" theke purono address khullei abar inbox + OTP dekha jay (address expire na howa porjonto, ~24h).
+- **Old address, pore OTP:** prottek address (ar tar session id) browser-er localStorage-e save thake. "My Addresses" theke purono address khullei abar inbox + OTP dekha jay — address ~1 ghonta thake.
 - **Kono signup / card / API key lage na.**
+
+## Backend keno Guerrilla Mail?
+
+Prothome mail.tm use korsilam — kintu mail.tm Vercel er server theke asha request 403 diye block kore dey (live test kora). Guerrilla Mail er API Vercel thekeo chole. Tai backend bodlano hoise.
+
+Limit (Guerrilla Mail er):
+- Address ar mail ~1 ghonta thake, tarpor expire hoye jay.
+- Guerrilla spam filter kore — spam hisebe dhora mail inbox-e ashe na. OTP legit sender (Google, Facebook, WhatsApp ityadi) theke ashle thik moto ashe.
+- Temp mail important account-e (bank, main Gmail/Facebook) use koro na — OTP miss hole recover kora jabe na.
 
 ## Deploy (Vercel)
 
@@ -13,16 +22,11 @@ Free temporary email generator — nijer temp mail, nijer Vercel.
 2. [vercel.com/new](https://vercel.com/new) → repo ta import koro → **Deploy** chap dao. Kono environment variable lagbe na.
 3. Live link peye jaba — oita-i tomar temp mail website.
 
+**Important:** Deploy er por Vercel er **Deployment Protection (Vercel Authentication)** OFF korte hobe, na hole public keu site khulte parbe na — Settings → Deployment Protection → Vercel Authentication off.
+
 ## Kivabe kaj kore
 
-1. `GET /api/domains` → mail.tm theke active domain ane.
-2. `POST /api/accounts` → notun address banay (`name@domain`, random password).
-3. `POST /api/token` → login token ane (token ~30 min thake; expire hole app nijei notun token niye ney).
-4. `GET /api/messages` / `GET /api/message?id=` → inbox + full mail pore.
-5. Frontend 10 second por por inbox refresh kore; OTP regex (`\b\d{4,8}\b`) diye code ber kore.
-
-## Limit (mail.tm er)
-
-- Account banano: 5 ta / hour / IP. Token: 10 ta / hour / IP. General: 8 request / second / IP.
-- Mail ~24 ghonta thake, tarpor delete hoye jay.
-- Temp mail important account-e (bank, main Gmail/Facebook) use koro na — OTP miss hole recover kora jabe na.
+1. `POST /api/accounts` → Guerrilla Mail e notun address banay (custom name dile setao), session id (`sid`) ferot dey.
+2. `GET /api/messages?sid=` → inbox check kore (15 second por por auto-refresh).
+3. `GET /api/message?id=&sid=` → ekta mail er full body pore.
+4. Frontend OTP regex (`\b\d{4,8}\b`) diye code ber kore banner-e dekhay.
