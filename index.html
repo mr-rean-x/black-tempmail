@@ -22,6 +22,12 @@
     <p class="text-gray-400 text-sm mt-1">Free temporary email — no signup, no password to remember</p>
   </header>
 
+  <!-- Mode toggle -->
+  <div class="grid grid-cols-2 gap-2 mb-4">
+    <button id="modeQuick" onclick="setMode('quick')" class="py-2.5 rounded-xl font-bold text-sm border">⚡ Quick <span class="font-normal opacity-80">~1 hour</span></button>
+    <button id="modePerm" onclick="setMode('perm')" class="py-2.5 rounded-xl font-bold text-sm border">♾️ Permanent <span class="font-normal opacity-80">never expires</span></button>
+  </div>
+
   <!-- Address box -->
   <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-lg">
     <label class="text-xs text-gray-400 uppercase tracking-wider">Your temp email</label>
@@ -35,9 +41,10 @@
 
     <div class="flex gap-2 mt-2">
       <button onclick="copyAddress()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold py-2 rounded-xl">📋 Copy Address</button>
-      <button onclick="loadInbox(true)" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold py-2 rounded-xl">🔄 Refresh Inbox</button>
+      <button id="actionBtn" onclick="actionButton()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold py-2 rounded-xl">🔄 Refresh Inbox</button>
     </div>
     <p id="status" class="text-xs text-gray-500 mt-2">Inbox auto-refreshes every 15 seconds.</p>
+    <p id="modeNote" class="text-xs text-gray-500 mt-1"></p>
   </div>
 
   <!-- OTP banner -->
@@ -60,13 +67,13 @@
   <!-- Saved addresses -->
   <div class="mt-6">
     <h2 class="font-bold text-lg">My Addresses</h2>
-    <p class="text-xs text-gray-500">Old addresses stay saved on this device — open one any time within ~1 hour to check its OTP.</p>
+    <p class="text-xs text-gray-500">Old addresses stay saved on this device. Quick ones work ~1 hour; Permanent ones never expire — open one any time, even a year later, and new OTPs will be there.</p>
     <div id="savedList" class="mt-2 space-y-2"></div>
   </div>
 
   <footer class="text-center mt-8 mb-2">
     <p class="text-gray-500 text-sm"><b><i>develop by Black knowledge</i></b></p>
-    <p class="text-gray-600 text-xs mt-1">Powered by Guerrilla Mail API via Vercel • Addresses last ~1 hour • Never use temp mail for important accounts</p>
+    <p class="text-gray-600 text-xs mt-1">Quick: Guerrilla Mail (~1 hour) • Permanent: YOPmail (never expires, mail kept 8 days, public inbox) • Never use temp mail for important accounts</p>
   </footer>
 </div>
 
@@ -88,7 +95,9 @@
 
 <script>
 const LS_KEY = 'blacktempmail_accounts';
-let current = null;      // { address, sid }
+const MODE_KEY = 'blacktempmail_mode';
+let mode = localStorage.getItem(MODE_KEY) || 'quick';   // 'quick' | 'perm'
+let current = null;      // quick: { type:'quick', address, sid } | perm: { type:'yopmail', address, name }
 let pollTimer = null;
 let lastMsgIds = new Set();
 
@@ -125,8 +134,8 @@ function getSaved() {
 }
 function saveAccount(acc) {
   const list = getSaved().filter(a => a.address !== acc.address);
-  list.unshift({ address: acc.address, sid: acc.sid, created: Date.now() });
-  localStorage.setItem(LS_KEY, JSON.stringify(list.slice(0, 20)));
+  list.unshift({ address: acc.address, type: acc.type, sid: acc.sid || null, name: acc.name || null, created: Date.now() });
+  localStorage.setItem(LS_KEY, JSON.stringify(list.slice(0, 100)));
   renderSaved();
 }
 function deleteSaved(address) {
@@ -138,20 +147,93 @@ function renderSaved() {
   const list = getSaved();
   $('savedList').innerHTML = list.length ? '' : '<p class="text-gray-600 text-sm">No saved address yet.</p>';
   list.forEach(a => {
+    const isPerm = a.type === 'yopmail';
     const row = document.createElement('div');
     row.className = 'flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2';
     row.innerHTML =
-      '<span class="flex-1 min-w-0 font-mono text-xs text-green-400 truncate">' + esc(a.address) + '</span>' +
-      '<button class="text-xs bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded-lg">Open</button>' +
+      '<span class="flex-1 min-w-0 font-mono text-xs truncate ' + (isPerm ? 'text-yellow-400' : 'text-green-400') + '">' + esc(a.address) + '</span>' +
+      '<span class="text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ' + (isPerm ? 'bg-yellow-900 text-yellow-300' : 'bg-green-900 text-green-300') + '">' + (isPerm ? '♾️ Permanent' : '⚡ Quick') + '</span>' +
+      '<button class="text-xs bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded-lg">' + (isPerm ? 'Open ↗' : 'Open') + '</button>' +
       '<button class="text-xs text-red-400 px-1">✕</button>';
-    row.children[1].onclick = () => openSaved(a);
-    row.children[2].onclick = () => deleteSaved(a.address);
+    row.children[2].onclick = () => openSaved(a);
+    row.children[3].onclick = () => deleteSaved(a.address);
     $('savedList').appendChild(row);
   });
 }
 
+// ---- mode toggle ----
+function setMode(m) {
+  mode = m;
+  localStorage.setItem(MODE_KEY, m);
+  paintMode();
+  stopPolling();
+  $('otpBanner').classList.add('hidden');
+  $('msgCount').textContent = '';
+  const saved = getSaved().filter(a => (a.type || 'quick') === (m === 'perm' ? 'yopmail' : 'quick'));
+  if (saved.length) openSaved(saved[0]);
+  else generateAddress();
+}
+function paintMode() {
+  const q = $('modeQuick'), p = $('modePerm');
+  if (mode === 'quick') {
+    q.className = 'py-2.5 rounded-xl font-bold text-sm border bg-green-600 border-green-600 text-white';
+    p.className = 'py-2.5 rounded-xl font-bold text-sm border bg-zinc-900 border-zinc-800 text-gray-300';
+    $('actionBtn').textContent = '🔄 Refresh Inbox';
+    $('modeNote').textContent = 'Quick address — inbox lives here in the app, mail lasts ~1 hour.';
+  } else {
+    p.className = 'py-2.5 rounded-xl font-bold text-sm border bg-yellow-600 border-yellow-600 text-white';
+    q.className = 'py-2.5 rounded-xl font-bold text-sm border bg-zinc-900 border-zinc-800 text-gray-300';
+    $('actionBtn').textContent = '📬 Open Inbox ↗';
+    $('modeNote').textContent = 'Permanent address — never expires. Mail stays 8 days. Inbox is public, so never use it for banking or important accounts.';
+  }
+}
+function actionButton() {
+  if (mode === 'perm') openYopmailInbox();
+  else loadInbox(true);
+}
+
+// ---- YOPmail permanent addresses (no server call needed — the inbox exists the moment mail is sent to it) ----
+function randomYopName() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let s = '';
+  for (let i = 0; i < 10; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+function yopmailLink(name) {
+  return 'https://yopmail.com/en/?login=' + encodeURIComponent(name);
+}
+function openYopmailInbox() {
+  if (current && current.type === 'yopmail' && current.name) {
+    window.open(yopmailLink(current.name), '_blank');
+    setStatus('YOPmail inbox opened in a new tab — solve the check there once, then your mail shows.');
+  }
+}
+function generateYopmailAddress() {
+  const custom = $('customName').value.trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 30);
+  const name = custom || randomYopName();
+  current = { type: 'yopmail', address: name + '@yopmail.com', name: name };
+  saveAccount(current);
+  $('addressBox').textContent = current.address;
+  $('customName').value = '';
+  setStatus('Permanent address ready — it never expires. Send mail to it any time, even a year later.');
+  renderPermPanel();
+}
+function renderPermPanel() {
+  $('msgCount').textContent = '';
+  $('inboxState').textContent = 'permanent ♾️';
+  $('otpBanner').classList.add('hidden');
+  $('inbox').innerHTML =
+    '<div class="bg-zinc-900 border border-yellow-800 rounded-xl px-4 py-4 text-sm space-y-2">' +
+    '<p class="font-bold text-yellow-400">♾️ This address never expires.</p>' +
+    '<p class="text-gray-300">1 month or 1 year later, mail sent to this address will still arrive. Open the inbox on YOPmail to read it — each mail stays there for 8 days.</p>' +
+    '<button onclick="openYopmailInbox()" class="w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2.5 rounded-xl">📬 Open Inbox on YOPmail ↗</button>' +
+    '<p class="text-xs text-gray-500">YOPmail inboxes are public — anyone who knows this name can read the mail. Never use it for banking, recovery or important accounts.</p>' +
+    '</div>';
+}
+
 // ---- Guerrilla Mail flow (through Vercel API) ----
 async function generateAddress() {
+  if (mode === 'perm') { generateYopmailAddress(); return; }
   const custom = $('customName').value.trim().replace(/[^a-zA-Z0-9._-]/g, '').toLowerCase();
   setStatus('Creating your address...');
   $('addressBox').textContent = 'Generating...';
@@ -162,7 +244,7 @@ async function generateAddress() {
     });
     const d = await r.json();
     if (!r.ok || !d.address || !d.sid) throw new Error((d && (d.detail || d.error)) || 'could not create address');
-    current = { address: d.address, sid: d.sid };
+    current = { type: 'quick', address: d.address, sid: d.sid };
     saveAccount(current);
     $('addressBox').textContent = d.address;
     $('customName').value = '';
@@ -177,17 +259,32 @@ async function generateAddress() {
 }
 
 function openSaved(a) {
-  current = { address: a.address, sid: a.sid };
-  $('addressBox').textContent = a.address;
-  lastMsgIds = new Set();
-  setStatus('Opened saved address — inbox auto-refreshes every 15 seconds.');
-  loadInbox(true);
-  startPolling();
+  const type = a.type || 'quick';
+  if (type === 'yopmail') {
+    mode = 'perm';
+    localStorage.setItem(MODE_KEY, 'perm');
+    paintMode();
+    stopPolling();
+    current = { type: 'yopmail', address: a.address, name: a.name || a.address.split('@')[0] };
+    $('addressBox').textContent = a.address;
+    setStatus('Opened saved permanent address — it never expires.');
+    renderPermPanel();
+  } else {
+    mode = 'quick';
+    localStorage.setItem(MODE_KEY, 'quick');
+    paintMode();
+    current = { type: 'quick', address: a.address, sid: a.sid };
+    $('addressBox').textContent = a.address;
+    lastMsgIds = new Set();
+    setStatus('Opened saved address — inbox auto-refreshes every 15 seconds.');
+    loadInbox(true);
+    startPolling();
+  }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 async function loadInbox(manual) {
-  if (!current) return;
+  if (!current || current.type !== 'quick') return;
   try {
     const r = await fetch('/api/messages?sid=' + encodeURIComponent(current.sid));
     const d = await r.json();
@@ -235,6 +332,7 @@ async function loadInbox(manual) {
 }
 
 async function openMessage(id) {
+  if (!current || current.type !== 'quick') return;
   try {
     const r = await fetch('/api/message?id=' + encodeURIComponent(id) + '&sid=' + encodeURIComponent(current.sid));
     const m = await r.json();
@@ -267,11 +365,16 @@ function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => loadInbox(false), 15000);
 }
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
 
-// start: open last saved address, else make a fresh one
+// start: paint mode, then open last saved address of that mode, else make a fresh one
+paintMode();
 renderSaved();
 const saved = getSaved();
-if (saved.length) openSaved(saved[0]);
+const ofMode = saved.filter(a => (a.type || 'quick') === (mode === 'perm' ? 'yopmail' : 'quick'));
+if (ofMode.length) openSaved(ofMode[0]);
 else generateAddress();
 </script>
 </body>
