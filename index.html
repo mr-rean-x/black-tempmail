@@ -10,6 +10,10 @@
   .otp-chip { letter-spacing: .2em; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-thumb { background: #22c55e; border-radius: 3px; }
+  .tab-active-quick { background: #16a34a; border-color: #16a34a; color: #fff; }
+  .tab-active-perm { background: #ca8a04; border-color: #ca8a04; color: #fff; }
+  .tab-active-life { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .tab-idle { background: #18181b; border-color: #27272a; color: #d4d4d8; }
 </style>
 </head>
 <body class="bg-black text-gray-100 min-h-screen font-sans">
@@ -22,14 +26,15 @@
     <p class="text-gray-400 text-sm mt-1">Free temporary email — no signup, no password to remember</p>
   </header>
 
-  <!-- Mode toggle -->
-  <div class="grid grid-cols-2 gap-2 mb-4">
-    <button id="modeQuick" onclick="setMode('quick')" class="py-2.5 rounded-xl font-bold text-sm border">⚡ Quick <span class="font-normal opacity-80">~1 hour</span></button>
-    <button id="modePerm" onclick="setMode('perm')" class="py-2.5 rounded-xl font-bold text-sm border">♾️ Permanent <span class="font-normal opacity-80">never expires</span></button>
+  <!-- 3 inbox tabs -->
+  <div class="grid grid-cols-3 gap-2 mb-4">
+    <button id="tabQuick" onclick="setTab('quick')" class="py-2.5 rounded-xl font-bold text-sm border">⚡ Quick <span class="font-normal opacity-80">~1h</span></button>
+    <button id="tabPerm" onclick="setTab('perm')" class="py-2.5 rounded-xl font-bold text-sm border">♾️ Permanent</button>
+    <button id="tabLife" onclick="setTab('lifetime')" class="py-2.5 rounded-xl font-bold text-sm border">💾 Lifetime</button>
   </div>
 
-  <!-- Address box -->
-  <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-lg">
+  <!-- Address box (Quick + Permanent tabs) -->
+  <div id="addressCard" class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-lg">
     <label class="text-xs text-gray-400 uppercase tracking-wider">Your temp email</label>
     <div id="addressBox" class="mt-1 text-green-400 font-mono text-base break-all min-h-[1.5rem]">Generating...</div>
 
@@ -47,16 +52,16 @@
     <p id="modeNote" class="text-xs text-gray-500 mt-1"></p>
   </div>
 
-  <!-- OTP banner -->
+  <!-- OTP banner (Quick tab) -->
   <div id="otpBanner" class="hidden mt-4 bg-green-950 border border-green-700 rounded-2xl p-4">
-    <div class="text-xs text-green-300 uppercase tracking-wider">OTP found</div>
+    <div class="text-xs text-green-300 uppercase tracking-wider">OTP found — tap to copy</div>
     <div id="otpList" class="flex flex-wrap gap-2 mt-2"></div>
   </div>
 
   <!-- Inbox -->
   <div class="mt-5 flex-1">
     <div class="flex items-center justify-between">
-      <h2 class="font-bold text-lg">Inbox <span id="msgCount" class="text-green-500 text-sm"></span></h2>
+      <h2 id="inboxTitle" class="font-bold text-lg">Inbox <span id="msgCount" class="text-green-500 text-sm"></span></h2>
       <span id="inboxState" class="text-xs text-gray-500">waiting...</span>
     </div>
     <div id="inbox" class="mt-2 space-y-2">
@@ -73,11 +78,14 @@
 
   <footer class="text-center mt-8 mb-2">
     <p class="text-gray-500 text-sm"><b><i>develop by Black knowledge</i></b></p>
-    <p class="text-gray-600 text-xs mt-1">Quick: Guerrilla Mail (~1 hour) • Permanent: YOPmail (never expires, mail kept 8 days, public inbox) • Never use temp mail for important accounts</p>
+    <p class="text-gray-600 text-xs mt-1">Quick: Guerrilla Mail (~1 hour) • Permanent: YOPmail (never expires, mail kept 8 days, public inbox) • Lifetime: mails you opened are saved on this device forever • Never use temp mail for important accounts</p>
   </footer>
 </div>
 
-<!-- Message detail modal -->
+<!-- Toast -->
+<div id="toast" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-green-600 text-white text-sm font-bold px-4 py-2.5 rounded-full shadow-xl whitespace-nowrap">📬 Notun mail asche!</div>
+
+<!-- Message detail modal (agent-style mail view) -->
 <div id="modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="if(event.target===this) closeModal()">
   <div class="bg-zinc-900 border border-zinc-800 rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-5">
     <div class="flex justify-between items-start gap-3">
@@ -85,21 +93,29 @@
         <h3 id="mSubject" class="font-bold break-words"></h3>
         <p id="mFrom" class="text-xs text-gray-400 break-all mt-1"></p>
         <p id="mDate" class="text-xs text-gray-500"></p>
+        <p id="mAddr" class="text-xs text-blue-400 break-all mt-0.5"></p>
       </div>
       <button onclick="closeModal()" class="text-gray-400 hover:text-white text-xl leading-none px-2">✕</button>
     </div>
     <div id="mOtp" class="flex flex-wrap gap-2 mt-3"></div>
     <pre id="mBody" class="whitespace-pre-wrap break-words text-sm mt-3 font-sans text-gray-200"></pre>
+    <div class="flex gap-2 mt-4">
+      <button id="copyOtpBtn" onclick="copyModalOtp()" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold text-sm py-2.5 rounded-xl">📋 Copy OTP</button>
+      <button onclick="copyModalMail()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 font-bold text-sm py-2.5 rounded-xl">📄 Copy Full Mail</button>
+    </div>
   </div>
 </div>
 
 <script>
 const LS_KEY = 'blacktempmail_accounts';
 const MODE_KEY = 'blacktempmail_mode';
+const LIFE_KEY = 'blacktempmail_lifetime';
 let mode = localStorage.getItem(MODE_KEY) || 'quick';   // 'quick' | 'perm'
+let tab = mode;                                          // 'quick' | 'perm' | 'lifetime'
 let current = null;      // quick: { type:'quick', address, sid } | perm: { type:'yopmail', address, name }
 let pollTimer = null;
 let lastMsgIds = new Set();
+let modalData = null;    // { subject, from, body, date }
 
 function $(id) { return document.getElementById(id); }
 function esc(s) {
@@ -114,6 +130,15 @@ function extractOTPs(text) {
   if (!text) return [];
   return [...new Set(text.match(/\b\d{4,8}\b/g) || [])].slice(0, 5);
 }
+function fmtTime(ts, dateStr) {
+  if (ts) {
+    try {
+      const d = new Date(ts * 1000);
+      return d.toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    } catch (e) {}
+  }
+  return dateStr || '';
+}
 function copyText(t, btn) {
   const done = () => { if (btn) { const old = btn.textContent; btn.textContent = 'Copied ✓'; setTimeout(() => btn.textContent = old, 1200); } };
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -127,6 +152,13 @@ function fallbackCopy(t, done) {
   document.body.removeChild(ta);
 }
 function setStatus(msg) { $('status').textContent = msg; }
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg || '📬 Notun mail asche!';
+  t.classList.remove('hidden');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.add('hidden'), 3500);
+}
 
 // ---- saved addresses (localStorage) ----
 function getSaved() {
@@ -161,35 +193,100 @@ function renderSaved() {
   });
 }
 
-// ---- mode toggle ----
-function setMode(m) {
-  mode = m;
-  localStorage.setItem(MODE_KEY, m);
-  paintMode();
-  stopPolling();
+// ---- lifetime mail cache (localStorage — mails you opened stay on this device forever) ----
+function getLife() {
+  try { return JSON.parse(localStorage.getItem(LIFE_KEY) || '[]'); } catch (e) { return []; }
+}
+function upsertLife(m) {
+  const list = getLife();
+  const key = (m.address || '') + '|' + String(m.id);
+  const i = list.findIndex(x => x.key === key);
+  if (i >= 0) {
+    // keep the full body once we have it, refresh everything else
+    list[i] = Object.assign({}, list[i], m, { body: m.body || list[i].body || '' });
+  } else {
+    list.unshift(Object.assign({ key: key, savedAt: Date.now() }, m));
+  }
+  localStorage.setItem(LIFE_KEY, JSON.stringify(list.slice(0, 100)));
+}
+function deleteLife(key) {
+  localStorage.setItem(LIFE_KEY, JSON.stringify(getLife().filter(x => x.key !== key)));
+  renderLife();
+}
+function clearLife() {
+  if (!confirm('Lifetime-er sob saved mail muche jabe. Sure?')) return;
+  localStorage.setItem(LIFE_KEY, '[]');
+  renderLife();
+}
+function renderLife() {
+  const list = getLife();
+  $('msgCount').textContent = list.length ? '(' + list.length + ')' : '';
+  $('inboxState').textContent = 'saved on this device 💾';
+  if (!list.length) {
+    $('inbox').innerHTML = '<div class="text-gray-500 text-sm text-center py-8">Lifetime-e ekhono kono mail save hoy nai.<br><br>Quick inbox-e kono mail khullei oita ekhane save hoye jabe — Guerrilla theke muche geleo ekhane chirodin thakbe.</div>';
+    return;
+  }
+  $('inbox').innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'flex justify-end';
+  head.innerHTML = '<button class="text-xs text-red-400 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg">🗑 Clear all</button>';
+  head.children[0].onclick = clearLife;
+  $('inbox').appendChild(head);
+  list.forEach(m => {
+    const row = document.createElement('div');
+    row.className = 'w-full text-left bg-zinc-900 border border-zinc-800 hover:border-blue-500 rounded-xl px-3 py-3 cursor-pointer';
+    row.innerHTML =
+      '<div class="flex justify-between gap-2"><span class="font-semibold text-sm truncate">' + esc(m.subject || '(no subject)') + '</span>' +
+      '<span class="text-[10px] text-gray-400 shrink-0">' + esc(fmtTime(m.ts, m.date)) + '</span></div>' +
+      '<div class="text-xs text-gray-400 truncate mt-0.5">' + esc(m.from || '') + '</div>' +
+      '<div class="text-xs text-gray-500 truncate">' + esc(m.intro || '') + '</div>' +
+      '<div class="flex justify-between items-center mt-1"><span class="text-[10px] font-mono text-blue-400 truncate">' + esc(m.address || '') + '</span>' +
+      '<button class="text-xs text-red-400 px-1">✕</button></div>';
+    row.onclick = () => openLifeMessage(m);
+    row.querySelector('button').onclick = (e) => { e.stopPropagation(); deleteLife(m.key); };
+    $('inbox').appendChild(row);
+  });
+}
+
+// ---- tabs (3 inbox sections) ----
+function setTab(t) {
+  tab = t;
+  if (t === 'lifetime') {
+    stopPolling();
+    $('otpBanner').classList.add('hidden');
+    $('addressCard').classList.add('hidden');
+    $('inboxTitle').firstChild.textContent = 'Lifetime Inbox ';
+    paintTabs();
+    renderLife();
+    return;
+  }
+  mode = t;
+  localStorage.setItem(MODE_KEY, mode);
+  $('addressCard').classList.remove('hidden');
   $('otpBanner').classList.add('hidden');
   $('msgCount').textContent = '';
-  const saved = getSaved().filter(a => (a.type || 'quick') === (m === 'perm' ? 'yopmail' : 'quick'));
+  $('inboxTitle').firstChild.textContent = t === 'perm' ? 'Permanent Inbox ' : 'Inbox ';
+  paintTabs();
+  stopPolling();
+  const saved = getSaved().filter(a => (a.type || 'quick') === (t === 'perm' ? 'yopmail' : 'quick'));
   if (saved.length) openSaved(saved[0]);
   else generateAddress();
 }
-function paintMode() {
-  const q = $('modeQuick'), p = $('modePerm');
-  if (mode === 'quick') {
-    q.className = 'py-2.5 rounded-xl font-bold text-sm border bg-green-600 border-green-600 text-white';
-    p.className = 'py-2.5 rounded-xl font-bold text-sm border bg-zinc-900 border-zinc-800 text-gray-300';
+function paintTabs() {
+  $('tabQuick').className = 'py-2.5 rounded-xl font-bold text-sm border ' + (tab === 'quick' ? 'tab-active-quick' : 'tab-idle');
+  $('tabPerm').className = 'py-2.5 rounded-xl font-bold text-sm border ' + (tab === 'perm' ? 'tab-active-perm' : 'tab-idle');
+  $('tabLife').className = 'py-2.5 rounded-xl font-bold text-sm border ' + (tab === 'lifetime' ? 'tab-active-life' : 'tab-idle');
+  if (tab === 'quick') {
     $('actionBtn').textContent = '🔄 Refresh Inbox';
     $('modeNote').textContent = 'Quick address — inbox lives here in the app, mail lasts ~1 hour.';
-  } else {
-    p.className = 'py-2.5 rounded-xl font-bold text-sm border bg-yellow-600 border-yellow-600 text-white';
-    q.className = 'py-2.5 rounded-xl font-bold text-sm border bg-zinc-900 border-zinc-800 text-gray-300';
+  } else if (tab === 'perm') {
     $('actionBtn').textContent = '📬 Open Inbox ↗';
     $('modeNote').textContent = 'Permanent address — never expires. Mail stays 8 days. Inbox is public, so never use it for banking or important accounts.';
   }
 }
 function actionButton() {
-  if (mode === 'perm') openYopmailInbox();
-  else loadInbox(true);
+  if (tab === 'perm') openYopmailInbox();
+  else if (tab === 'quick') loadInbox(true);
 }
 
 // ---- YOPmail permanent addresses (no server call needed — the inbox exists the moment mail is sent to it) ----
@@ -228,12 +325,13 @@ function renderPermPanel() {
     '<p class="text-gray-300">1 month or 1 year later, mail sent to this address will still arrive. Open the inbox on YOPmail to read it — each mail stays there for 8 days.</p>' +
     '<button onclick="openYopmailInbox()" class="w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2.5 rounded-xl">📬 Open Inbox on YOPmail ↗</button>' +
     '<p class="text-xs text-gray-500">YOPmail inboxes are public — anyone who knows this name can read the mail. Never use it for banking, recovery or important accounts.</p>' +
+    '<p class="text-xs text-gray-500">Tip: YOPmail-e mail khulle 8 diner vitore ekbar Quick address-e forward kore nile oita Lifetime-e save hoye jabe.</p>' +
     '</div>';
 }
 
 // ---- Guerrilla Mail flow (through Vercel API) ----
 async function generateAddress() {
-  if (mode === 'perm') { generateYopmailAddress(); return; }
+  if (tab === 'perm') { generateYopmailAddress(); return; }
   const custom = $('customName').value.trim().replace(/[^a-zA-Z0-9._-]/g, '').toLowerCase();
   setStatus('Creating your address...');
   $('addressBox').textContent = 'Generating...';
@@ -261,18 +359,24 @@ async function generateAddress() {
 function openSaved(a) {
   const type = a.type || 'quick';
   if (type === 'yopmail') {
-    mode = 'perm';
+    tab = 'perm'; mode = 'perm';
     localStorage.setItem(MODE_KEY, 'perm');
-    paintMode();
+    paintTabs();
     stopPolling();
+    $('addressCard').classList.remove('hidden');
+    $('otpBanner').classList.add('hidden');
+    $('inboxTitle').firstChild.textContent = 'Permanent Inbox ';
     current = { type: 'yopmail', address: a.address, name: a.name || a.address.split('@')[0] };
     $('addressBox').textContent = a.address;
     setStatus('Opened saved permanent address — it never expires.');
     renderPermPanel();
   } else {
-    mode = 'quick';
+    tab = 'quick'; mode = 'quick';
     localStorage.setItem(MODE_KEY, 'quick');
-    paintMode();
+    paintTabs();
+    $('addressCard').classList.remove('hidden');
+    $('otpBanner').classList.add('hidden');
+    $('inboxTitle').firstChild.textContent = 'Inbox ';
     current = { type: 'quick', address: a.address, sid: a.sid };
     $('addressBox').textContent = a.address;
     lastMsgIds = new Set();
@@ -284,14 +388,24 @@ function openSaved(a) {
 }
 
 async function loadInbox(manual) {
-  if (!current || current.type !== 'quick') return;
+  if (!current || current.type !== 'quick' || tab !== 'quick') return;
   try {
     const r = await fetch('/api/messages?sid=' + encodeURIComponent(current.sid));
     const d = await r.json();
     if (!r.ok) throw new Error((d && (d.detail || d.error)) || 'inbox load failed');
     const msgs = d.messages || [];
+    // save every mail into the Lifetime cache (so it stays even after Guerrilla deletes it)
+    msgs.forEach(m => upsertLife({
+      id: m.id, address: current.address, subject: m.subject, from: m.from,
+      intro: m.intro, body: '', date: m.date, ts: m.timestamp || 0
+    }));
     $('msgCount').textContent = msgs.length ? '(' + msgs.length + ')' : '';
     $('inboxState').textContent = 'updated ' + new Date().toLocaleTimeString();
+    const newIds = msgs.map(m => String(m.id)).filter(id => !lastMsgIds.has(id));
+    if (newIds.length && lastMsgIds.size) {
+      showToast('📬 Notun mail asche!');
+      document.title = '(' + newIds.length + ') Black TempMail';
+    }
     if (!msgs.length) {
       if (manual) $('inbox').innerHTML = '<div class="text-gray-500 text-sm text-center py-8">Inbox empty — waiting for mail...</div>';
       $('otpBanner').classList.add('hidden');
@@ -319,7 +433,9 @@ async function loadInbox(manual) {
       const isNew = !lastMsgIds.has(String(m.id));
       row.innerHTML =
         '<div class="flex justify-between gap-2"><span class="font-semibold text-sm truncate">' + esc(m.subject || '(no subject)') + '</span>' +
-        (isNew ? '<span class="text-[10px] bg-green-600 text-white px-2 py-0.5 rounded-full shrink-0">NEW</span>' : '') + '</div>' +
+        '<span class="flex items-center gap-1 shrink-0">' +
+        (isNew ? '<span class="text-[10px] bg-green-600 text-white px-2 py-0.5 rounded-full">NEW</span>' : '') +
+        '<span class="text-[10px] text-gray-400">' + esc(fmtTime(m.timestamp, m.date)) + '</span></span></div>' +
         '<div class="text-xs text-gray-400 truncate mt-0.5">' + esc(m.from || '') + '</div>' +
         '<div class="text-xs text-gray-500 truncate">' + esc(m.intro || '') + '</div>';
       row.onclick = () => openMessage(m.id);
@@ -331,6 +447,39 @@ async function loadInbox(manual) {
   }
 }
 
+// ---- agent-style mail view ----
+function showMailModal(data) {
+  modalData = data;
+  const otps = extractOTPs((data.subject || '') + ' ' + (data.body || ''));
+  $('mSubject').textContent = data.subject || '(no subject)';
+  $('mFrom').textContent = 'From: ' + (data.from || '');
+  $('mDate').textContent = fmtTime(data.ts, data.date) || '';
+  $('mAddr').textContent = data.address ? 'To: ' + data.address : '';
+  $('mBody').textContent = data.body || '(empty message)';
+  $('mOtp').innerHTML = '';
+  otps.forEach(code => {
+    const b = document.createElement('button');
+    b.className = 'otp-chip bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-2 rounded-xl';
+    b.textContent = 'OTP: ' + code + ' 📋';
+    b.onclick = () => copyText(code, b);
+    $('mOtp').appendChild(b);
+  });
+  $('copyOtpBtn').style.display = otps.length ? '' : 'none';
+  $('modal').classList.remove('hidden');
+  document.title = 'Black TempMail';
+}
+function copyModalOtp() {
+  if (!modalData) return;
+  const otps = extractOTPs((modalData.subject || '') + ' ' + (modalData.body || ''));
+  if (otps.length) copyText(otps[0]);
+}
+function copyModalMail() {
+  if (!modalData) return;
+  const full = 'Subject: ' + (modalData.subject || '') + '\nFrom: ' + (modalData.from || '') + '\nDate: ' + (fmtTime(modalData.ts, modalData.date) || '') + '\n\n' + (modalData.body || '');
+  copyText(full);
+}
+function closeModal() { $('modal').classList.add('hidden'); }
+
 async function openMessage(id) {
   if (!current || current.type !== 'quick') return;
   try {
@@ -338,25 +487,22 @@ async function openMessage(id) {
     const m = await r.json();
     if (!r.ok) throw new Error((m && (m.detail || m.error)) || 'could not open message');
     const body = stripHtml(m.body || '');
-    const otps = extractOTPs((m.subject || '') + ' ' + body);
-    $('mSubject').textContent = m.subject || '(no subject)';
-    $('mFrom').textContent = 'From: ' + (m.from || '');
-    $('mDate').textContent = m.date || '';
-    $('mBody').textContent = body || '(empty message)';
-    $('mOtp').innerHTML = '';
-    otps.forEach(code => {
-      const b = document.createElement('button');
-      b.className = 'otp-chip bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-2 rounded-xl';
-      b.textContent = 'OTP: ' + code + ' 📋';
-      b.onclick = () => copyText(code, b);
-      $('mOtp').appendChild(b);
-    });
-    $('modal').classList.remove('hidden');
+    // save the full body into the Lifetime cache (keep the real received time)
+    const cached = getLife().find(x => x.key === (current.address + '|' + String(id)));
+    const ts = cached ? cached.ts : 0;
+    upsertLife({ id: id, address: current.address, subject: m.subject, from: m.from, intro: body.slice(0, 120), body: body, date: m.date, ts: ts });
+    showMailModal({ subject: m.subject, from: m.from, body: body, date: m.date, ts: ts, address: current.address });
   } catch (e) {
     setStatus('Could not open message: ' + e.message);
   }
 }
-function closeModal() { $('modal').classList.add('hidden'); }
+function openLifeMessage(m) {
+  showMailModal({
+    subject: m.subject, from: m.from,
+    body: m.body || (m.intro ? m.intro + '\n\n(Full body save hoy nai — mail-ta Quick inbox-e khulle full body save hobe.)' : '(empty message)'),
+    date: m.date, ts: m.ts, address: m.address
+  });
+}
 
 function copyAddress() {
   if (current) { copyText(current.address); setStatus('Address copied ✓'); }
@@ -369,8 +515,8 @@ function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
-// start: paint mode, then open last saved address of that mode, else make a fresh one
-paintMode();
+// start: paint tabs, then open last saved address of that mode, else make a fresh one
+paintTabs();
 renderSaved();
 const saved = getSaved();
 const ofMode = saved.filter(a => (a.type || 'quick') === (mode === 'perm' ? 'yopmail' : 'quick'));
